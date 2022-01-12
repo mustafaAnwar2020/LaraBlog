@@ -1,0 +1,125 @@
+<?php
+
+namespace App\Http\Controllers\API;
+
+use App\Models\Post;
+use Illuminate\Support\Facades\Validator;
+use App\Http\Controllers\API\baseController as Controller;
+use App\Http\Resources\Post as postResource;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class postsController extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function index()
+    {
+        $posts = Post::all();
+        return $this->sendResponse(postResource::collection($posts), 'all posts retrieved successfully');
+    }
+
+    public function store(Request $request)
+    {
+        $input = $request->all();
+        $validator = Validator::make($input, [
+            'title' => 'required|string|max:255',
+            "subject" => "required|string|max:1000",
+            "name" => "required",
+            "photo" => "image"
+        ]);
+        if ($validator->fails()) {
+            return $this->sendError($validator->errors(), 'something is wrong');
+        }
+
+        $newPhoto = time() . $input['photo']->getClientOriginalName();
+        $input['photo']->move('uploads/posts', $newPhoto);
+        $post = Post::create([
+            "title" => $input['title'],
+            "subject" => $input['subject'],
+            "photo" => 'uploads/posts/' . $newPhoto,
+            "user_id" => Auth::id(),
+            "slug" => str_slug($request->title)
+        ]);
+
+
+        return $this->sendResponse(new postResource($post), 'post created successfully');
+    }
+
+    /**
+     * Display the specified resource.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function show($id)
+    {
+        $post = Post::find($id);
+        // dd($post);
+        if(is_null($post))
+        {
+            return $this->sendError('post not found');
+        }
+        return $this->sendResponse(new postResource($post),'post found successfully');
+    }
+
+    public function update(Request $request, Post $post)
+    {
+        $input = $request->all();
+        $validator=validator::make($input,[
+            "title"=>"required",
+            "subject"=>"required",
+            "name"=>"required",
+            "photo"=>"image"
+        ]);
+        if ($validator->fails()) {
+            return $this->sendError('Validation error' , $validator->errors());
+        }
+        if($request->has('photo')){
+            $photo = $request->photo;
+            $newPhoto = time().$photo->getClientOriginalName();
+            $photo->move('uploads/posts',$newPhoto);
+            $post->photo = 'uploads/posts/'.$newPhoto;
+        }
+        $post->user_id = Auth::id();
+        $post->title = $input['title'];
+        $post->subject = $input['subject'];
+        $post->save();
+        $post->tags()->sync($request->name);
+        return $this->sendResponse(new postResource($post), 'Post updated Successfully!' );
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function destroy($id)
+    {
+        $errorMessage = [] ;
+        $post=Post::where('id',$id)->first();
+        if ( $post->user_id != Auth::id()) {
+            return $this->sendError('you dont have rights' , $errorMessage);
+        }
+        $post->delete($id);
+        return $this->sendResponse(new postResource($post), 'Post deleted Successfully!' );
+    }
+
+    public function delete($id)
+    {
+        $post = Post::onlyTrashed()->where('id',$id);
+        $post->forceDelete();
+        return $this->sendResponse(new postResource($post), 'Post deleted Successfully!' );
+    }
+
+    public function restoreTrashed($id)
+    {
+        $errorMessage = [] ;
+        $post = Post::withTrashed()->where('id',$id)->first()->restore();
+        return $this->sendResponse(new postResource($post), 'Post restored Successfully!' );
+    }
+}
