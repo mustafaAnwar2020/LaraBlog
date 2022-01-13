@@ -1,0 +1,97 @@
+<?php
+
+namespace App\Http\Controllers\API;
+
+use App\Models\Comment;
+use App\Models\Post;
+use Illuminate\Support\Facades\Validator;
+use App\Http\Controllers\API\baseController as Controller;
+use App\Http\Resources\Comment as commentResource;
+use Illuminate\Http\Request;
+use App\Http\Resources\Post as postResource;
+use Illuminate\Support\Facades\Auth;
+
+class commentController extends Controller
+{
+
+
+    public function index($postId)
+    {
+        $post = Post::where('id',$postId)->first(); // gets post data so u can add it to comment form
+        return $this->sendResponse(new postResource($post), 'post data retrieved successfully');
+    }
+
+
+    public function store(Request $request)
+    {
+        $input = $request->all();
+        $validator = Validator::make($input,[
+            'title' => "required|string|max:255",
+            'body'=>'required|string|max:1000'
+        ]);
+        if ($validator->fails()) {
+            return $this->sendError($validator->errors(), 'something is wrong');
+        }
+        $post = Post::where('id',$request->id)->first();
+        $comment = Comment::create([
+            'title'=>$request->title,
+            'body'=>$request->body,
+            'user_id'=>Auth::id(),
+            'parent_id'=>$post->id,
+            'post_id'=>$post->id
+        ]);
+        return $this->sendResponse(new commentResource($comment), 'comment created successfully');
+    }
+
+    public function replyStore(Request $request)
+    {
+        $input = $request->all();
+        $validator = Validator::make($input,[
+            'title'=>'required|string|max:255',
+            'body'=>'required|string|max:1000'
+        ]);
+        if ($validator->fails()) {
+            return $this->sendError($validator->errors(), 'something is wrong');
+        }
+        $comment = Comment::where('id',$request->id)->first();
+        // dd($comment);
+        $reply = Comment::create([
+            'title'=>$request->title,
+            'body'=>$request->body,
+            'user_id'=>Auth::id(),
+            'post_id'=>$comment->post_id,
+            'parent_id'=>$comment->id
+        ]);
+        return $this->sendResponse(new commentResource($comment), 'reply created successfully');
+    }
+
+
+    public function show($id)
+    {
+        $comment = Comment::where('id',$id)->first();
+        $post = Post::where('id',$comment->post_id)->first();
+        $reply = Comment::all(); // for reply handle in front-end
+        return [
+            'comment' => $this->sendResponse(new commentResource($comment), 'comment retrieved successfully'),
+            'post' => $this->sendResponse(new postResource($post), 'post data retrieved successfully'),
+            'Comments_for_reply' => $this->sendResponse(commentResource::collection($reply), 'comments retrieved successfully')
+        ];
+
+    }
+
+ function destroy($id)
+    {
+        $comment = Comment::where('id',$id)->first();
+        $replies = Comment::all();
+        foreach($replies as $item) //deletes sub-comments (replies) if comment has any
+        {
+            if ($item->parent_id == $id)
+            {
+                $item->delete($item->id);
+            }
+        }
+        $comment->delete($id);
+        return $this->sendResponse(new commentResource($comment), 'comment deleted successfully');
+
+    }
+}
