@@ -1,0 +1,55 @@
+<?php
+
+namespace App\Http\Controllers\API;
+use Illuminate\Support\Facades\Validator;
+use App\Http\Controllers\API\baseController as Controller;
+use Illuminate\Support\Facades\Auth;
+use App\Models\Profile;
+use App\Http\Resources\Profile as profileResource;
+use Illuminate\Http\Request;
+
+class profileController extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function index()
+    {
+        $user = Auth::user();
+        $profile = Profile::where('id',$user->profile->id)->first();
+         return $this->sendResponse(new profileResource($profile), 'welcome to your profile');
+    }
+
+    public function update(Request $request,Profile $profile)
+    {
+        $input = $request->all();
+        $validator = Validator::make($input,[
+            'name'=>'required|string|max:255',
+            'province'=>'required|string|max:255',
+            'gender'=>'string|max:255',
+            'facebook'=>'url',
+            'bio'=>'string|max:1000'
+        ]);
+        if ($validator->fails()) {
+            return $this->sendError('Validation error' , $validator->errors());
+        }
+        $user = Auth::user();
+        $user->name = $request->name;
+        $user->save();
+        $user->profile->province = $request->province;
+        $user->profile->facebook = $request->facebook;
+        $user->profile->gender = $request->gender;
+        $user->profile->bio = $request->bio;
+        $user->profile->save();
+        if($request->has('password'))
+        {
+            $user->password = bcrypt($request->password);
+            $user->save();
+        }
+        $profile = Profile::where('id',$user->profile->id)->first();
+        return $this->sendResponse(new profileResource($profile), 'profile updated successfully!');
+    }
+
+}
